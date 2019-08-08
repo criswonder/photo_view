@@ -11,7 +11,8 @@ class GalleryExample extends StatefulWidget {
 }
 
 class _GalleryExampleState extends State<GalleryExample> {
-  bool useCustomPageView = false;
+  bool useCustomPageView = true;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -25,46 +26,48 @@ class _GalleryExampleState extends State<GalleryExample> {
           Expanded(
               child: Center(
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  GalleryExampleItemThumbnail(
+                    galleryExampleItem: galleryItems[0],
+                    onTap: () {
+                      open(context, 0);
+                    },
+                  ),
+                  GalleryExampleItemThumbnail(
+                    galleryExampleItem: galleryItems[2],
+                    onTap: () {
+                      open(context, 2);
+                    },
+                  ),
+                  GalleryExampleItemThumbnail(
+                    galleryExampleItem: galleryItems[3],
+                    onTap: () {
+                      open(context, 3);
+                    },
+                  ),
+                ],
+              ),
+              Container(
+                  height: 30,
+                  child: Center(
+                      child: Row(
                     children: <Widget>[
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          GalleryExampleItemThumbnail(
-                            galleryExampleItem: galleryItems[0],
-                            onTap: () {
-                              open(context, 0);
-                            },
-                          ),
-                          GalleryExampleItemThumbnail(
-                            galleryExampleItem: galleryItems[2],
-                            onTap: () {
-                              open(context, 2);
-                            },
-                          ),
-                          GalleryExampleItemThumbnail(
-                            galleryExampleItem: galleryItems[3],
-                            onTap: () {
-                              open(context, 3);
-                            },
-                          ),
-                        ],
-                      ),
-                      Container(
-                          height: 30,
-                          child: Center(child: Row(
-                            children: <Widget>[
-                              const Text(" use custom pageView"),
-                              Checkbox(value: useCustomPageView, onChanged: (value){
-
-                                setState(() {
-                                  useCustomPageView=value;
-                                });
-                              }),
-                            ],
-                          ))),
+                      const Text(" use custom pageView"),
+                      Checkbox(
+                          value: useCustomPageView,
+                          onChanged: (value) {
+                            setState(() {
+                              useCustomPageView = value;
+                            });
+                          }),
                     ],
                   ))),
+            ],
+          ))),
         ],
       ),
     );
@@ -75,7 +78,7 @@ class _GalleryExampleState extends State<GalleryExample> {
         context,
         MaterialPageRoute(
           builder: (context) => GalleryPhotoViewWrapper(
-            customPagerView: useCustomPageView,
+            usePageViewWrapper: useCustomPageView,
             galleryItems: galleryItems,
             backgroundDecoration: const BoxDecoration(
               color: Colors.black,
@@ -89,7 +92,7 @@ class _GalleryExampleState extends State<GalleryExample> {
 class GalleryPhotoViewWrapper extends StatefulWidget {
   GalleryPhotoViewWrapper(
       {this.loadingChild,
-      this.customPagerView = false,
+      this.usePageViewWrapper = false,
       this.backgroundDecoration,
       this.minScale,
       this.maxScale,
@@ -104,7 +107,7 @@ class GalleryPhotoViewWrapper extends StatefulWidget {
   final int initialIndex;
   final PageController pageController;
   final List<GalleryExampleItem> galleryItems;
-  final bool customPagerView;
+  final bool usePageViewWrapper;
 
   @override
   State<StatefulWidget> createState() {
@@ -122,14 +125,15 @@ class _GalleryPhotoViewWrapperState extends State<GalleryPhotoViewWrapper> {
   }
 
   void onPageChanged(int index) {
-    setState(() {
-      currentIndex = index;
-    });
+    if(!widget.usePageViewWrapper){
+      setState(() {
+        currentIndex = index;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("1 ${widget.customPagerView}");
     return Scaffold(
       body: Container(
           decoration: widget.backgroundDecoration,
@@ -147,16 +151,20 @@ class _GalleryPhotoViewWrapperState extends State<GalleryPhotoViewWrapper> {
                 backgroundDecoration: widget.backgroundDecoration,
                 pageController: widget.pageController,
                 onPageChanged: onPageChanged,
-                usePageViewWrapper: widget.customPagerView,
+                usePageViewWrapper: widget.usePageViewWrapper,
               ),
-              Container(
-                padding: const EdgeInsets.all(20.0),
-                child: Text(
-                  "Image ${currentIndex + 1}",
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 17.0, decoration: null),
-                ),
-              )
+              widget.usePageViewWrapper
+                  ? Container()
+                  : Container(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Text(
+                        "Image ${currentIndex + 1}",
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17.0,
+                            decoration: null),
+                      ),
+                    )
             ],
           )),
     );

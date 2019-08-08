@@ -216,10 +216,11 @@ class _PhotoViewGalleryState extends State<PhotoViewGallery> {
   }
 
   PageViewWrapper _getPageViewWrapper() {
+    debugPrint("_getPageViewWrapper");
     final pageChangeListeners = OnPageChangedWrapper();
     pageChangeListeners.addListener(widget.onPageChanged);
 
-    final customController = PageViewGestureController(
+    final customController = PageViewWrapperController(
         pageViewController: _controller,
         onPageChangedWrapper: pageChangeListeners);
 
