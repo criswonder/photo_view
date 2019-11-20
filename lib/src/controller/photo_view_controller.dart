@@ -2,11 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/src/photo_view_scale_state.dart';
-import 'package:photo_view/src/photo_view_utils.dart';
-
-typedef ScaleStateListener = void Function(double prevScale, double nextScale);
+import 'package:photo_view/src/utils/ignorable_change_notifier.dart';
 
 /// The interface in which controllers will be implemented.
 ///
@@ -44,14 +40,14 @@ abstract class PhotoViewControllerBase<T extends PhotoViewControllerValue> {
 
   /// Add a listener that will ignore updates made internally
   ///
-  /// Since it is made for internal use, it is not porformatic to use more than one
-  /// listener. Preffer [outputStateStream]
+  /// Since it is made for internal use, it is not performatic to use more than one
+  /// listener. Prefer [outputStateStream]
   void addIgnorableListener(VoidCallback callback);
 
   /// Remove a listener that will ignore updates made internally
   ///
-  /// Since it is made for internal use, it is not porformatic to use more than one
-  /// listener. Preffer [outputStateStream]
+  /// Since it is made for internal use, it is not performatic to use more than one
+  /// listener. Prefer [outputStateStream]
   void removeIgnorableListener(VoidCallback callback);
 
   /// The position of the image in the screen given its offset after pan gestures.
@@ -125,14 +121,17 @@ class PhotoViewControllerValue {
 ///
 class PhotoViewController
     implements PhotoViewControllerBase<PhotoViewControllerValue> {
-  PhotoViewController(
-      {Offset initialPosition = Offset.zero, double initialRotation = 0.0})
-      : _valueNotifier = IgnorableValueNotifier(PhotoViewControllerValue(
+  PhotoViewController({
+    Offset initialPosition = Offset.zero,
+    double initialRotation = 0.0,
+  })  : _valueNotifier = IgnorableValueNotifier(
+          PhotoViewControllerValue(
             position: initialPosition,
             rotation: initialRotation,
-            scale:
-                null, // initial  scale is obtained via PhotoViewScaleState, therefore will be computed via scaleStateAwareScale
-            rotationFocusPoint: null)),
+            scale: null, // initial  scale is obtained via PhotoViewScaleState
+            rotationFocusPoint: null,
+          ),
+        ),
         super() {
     initial = value;
     prevValue = initial;
@@ -142,7 +141,7 @@ class PhotoViewController
     _outputCtrl.sink.add(initial);
   }
 
-  IgnorableValueNotifier<PhotoViewControllerValue> _valueNotifier;
+  final IgnorableValueNotifier<PhotoViewControllerValue> _valueNotifier;
 
   PhotoViewControllerValue initial;
 
@@ -186,10 +185,11 @@ class PhotoViewController
     }
     prevValue = value;
     value = PhotoViewControllerValue(
-        position: position,
-        scale: scale,
-        rotation: rotation,
-        rotationFocusPoint: rotationFocusPoint);
+      position: position,
+      scale: scale,
+      rotation: rotation,
+      rotationFocusPoint: rotationFocusPoint,
+    );
   }
 
   @override
@@ -202,10 +202,11 @@ class PhotoViewController
     }
     prevValue = value;
     value = PhotoViewControllerValue(
-        position: position,
-        scale: scale,
-        rotation: rotation,
-        rotationFocusPoint: rotationFocusPoint);
+      position: position,
+      scale: scale,
+      rotation: rotation,
+      rotationFocusPoint: rotationFocusPoint,
+    );
   }
 
   @override
@@ -217,11 +218,14 @@ class PhotoViewController
       return;
     }
     prevValue = value;
-    _valueNotifier.updateIgnoring(PhotoViewControllerValue(
+    _valueNotifier.updateIgnoring(
+      PhotoViewControllerValue(
         position: position,
         scale: scale,
         rotation: rotation,
-        rotationFocusPoint: rotationFocusPoint));
+        rotationFocusPoint: rotationFocusPoint,
+      ),
+    );
   }
 
   @override
@@ -231,10 +235,11 @@ class PhotoViewController
     }
     prevValue = value;
     value = PhotoViewControllerValue(
-        position: position,
-        scale: scale,
-        rotation: rotation,
-        rotationFocusPoint: rotationFocusPoint);
+      position: position,
+      scale: scale,
+      rotation: rotation,
+      rotationFocusPoint: rotationFocusPoint,
+    );
   }
 
   @override
@@ -247,10 +252,11 @@ class PhotoViewController
     }
     prevValue = value;
     value = PhotoViewControllerValue(
-        position: position,
-        scale: scale,
-        rotation: rotation,
-        rotationFocusPoint: rotationFocusPoint);
+      position: position,
+      scale: scale,
+      rotation: rotation,
+      rotationFocusPoint: rotationFocusPoint,
+    );
   }
 
   @override
@@ -265,10 +271,11 @@ class PhotoViewController
   }) {
     prevValue = value;
     value = PhotoViewControllerValue(
-        position: position ?? value.position,
-        scale: scale ?? value.scale,
-        rotation: rotation ?? value.rotation,
-        rotationFocusPoint: rotationFocusPoint ?? value.rotationFocusPoint);
+      position: position ?? value.position,
+      scale: scale ?? value.scale,
+      rotation: rotation ?? value.rotation,
+      rotationFocusPoint: rotationFocusPoint ?? value.rotationFocusPoint,
+    );
   }
 
   @override
@@ -280,100 +287,5 @@ class PhotoViewController
       return;
     }
     _valueNotifier.value = newValue;
-  }
-}
-
-/// A controller responsible only by [scaleState].
-///
-/// Scale state is a common value with represents the step in which the [PhotoView.scaleStateCycle] is.
-/// This cycle is triggered by the "doubleTap" gesture.
-///
-/// Any change in its [scaleState] should animate the scale of image/content.
-///
-/// As it is a controller, whoever instantiates it, should [dispose] it afterwards.
-///
-/// The updates should be done via [scaleState] setter and the updated lintened via [outputScaleStateStream]
-///
-class PhotoViewScaleStateController {
-  PhotoViewScaleStateController() {
-    _scaleStateNotifier = IgnorableValueNotifier(PhotoViewScaleState.initial);
-
-    _scaleStateNotifier.addListener(_scaleStateChangeListener);
-    _outputScaleStateCtrl = StreamController<PhotoViewScaleState>.broadcast();
-    _outputScaleStateCtrl.sink.add(PhotoViewScaleState.initial);
-
-    prevScaleState = PhotoViewScaleState.initial;
-  }
-
-  IgnorableValueNotifier<PhotoViewScaleState> _scaleStateNotifier;
-  StreamController<PhotoViewScaleState> _outputScaleStateCtrl;
-
-  /// The output for state/value updates
-  Stream<PhotoViewScaleState> get outputScaleStateStream =>
-      _outputScaleStateCtrl.stream;
-
-  /// The state value before the last change or the initial state if the state has not been changed.
-  PhotoViewScaleState prevScaleState;
-
-  /// The actual state value
-  PhotoViewScaleState get scaleState => _scaleStateNotifier.value;
-
-  /// Updates scaleState and notify all listeners (and the stream)
-  set scaleState(PhotoViewScaleState newValue) {
-    if (_scaleStateNotifier.value == newValue) {
-      return;
-    }
-
-    prevScaleState = _scaleStateNotifier.value;
-    _scaleStateNotifier.value = newValue;
-  }
-
-  /// Checks if its actual value is different than previousValue
-  bool get hasChanged => prevScaleState != scaleState;
-
-  /// Check if is `zoomedIn` & `zoomedOut`
-  bool get isZooming =>
-      scaleState == PhotoViewScaleState.zoomedIn ||
-      scaleState == PhotoViewScaleState.zoomedOut;
-
-  /// Resets the state to the initial value;
-  void reset() {
-    prevScaleState = scaleState;
-    scaleState = PhotoViewScaleState.initial;
-  }
-
-  /// Closes streams and removes eventual listeners
-  void dispose() {
-    _outputScaleStateCtrl.close();
-    _scaleStateNotifier.dispose();
-  }
-
-  /// Nevermind this method :D, look away
-  void setInvisibly(PhotoViewScaleState newValue) {
-    if (_scaleStateNotifier.value == newValue) {
-      return;
-    }
-    prevScaleState = _scaleStateNotifier.value;
-    _scaleStateNotifier.updateIgnoring(newValue);
-  }
-
-  void _scaleStateChangeListener() {
-    _outputScaleStateCtrl.sink.add(scaleState);
-  }
-
-  /// Add a listener that will ignore updates made internally
-  ///
-  /// Since it is made for internal use, it is not porformatic to use more than one
-  /// listener. Preffer [outputScaleStateStream]
-  void addIgnorableListener(VoidCallback callback) {
-    _scaleStateNotifier.addIgnorableListener(callback);
-  }
-
-  /// Remove a listener that will ignore updates made internally
-  ///
-  /// Since it is made for internal use, it is not porformatic to use more than one
-  /// listener. Preffer [outputScaleStateStream]
-  void removeIgnorableListener(VoidCallback callback) {
-    _scaleStateNotifier.removeIgnorableListener(callback);
   }
 }

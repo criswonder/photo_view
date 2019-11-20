@@ -1,42 +1,53 @@
 import 'package:flutter/widgets.dart';
-import 'package:photo_view/src/photo_view_controller.dart';
-import 'package:photo_view/src/photo_view_controller_delegate.dart';
-import 'package:photo_view/src/photo_view_pageview_wrapper.dart';
 
-typedef PhotoViewImageTapUpCallback = Function(BuildContext context,
-    TapUpDetails details, PhotoViewControllerValue controllerValue);
-typedef PhotoViewImageTapDownCallback = Function(BuildContext context,
-    TapDownDetails details, PhotoViewControllerValue controllerValue);
+import 'package:photo_view/photo_view.dart'
+    show
+        PhotoViewHeroAttributes,
+        PhotoViewImageTapDownCallback,
+        PhotoViewImageTapUpCallback,
+        ScaleStateCycle;
+import 'package:photo_view/src/controller/photo_view_controller.dart';
+import 'package:photo_view/src/controller/photo_view_controller_delegate.dart';
+import 'package:photo_view/src/controller/photo_view_scalestate_controller.dart';
+import 'package:photo_view/src/utils/photo_view_utils.dart';
+import 'package:photo_view/src/core/photo_view_gesture_detector.dart';
+import 'package:photo_view/src/core/photo_view_hit_corners.dart';
 
-/// Internal widget in which controls all animations lifecycles, core responses
+/// Internal widget in which controls all animations lifecycle, core responses
 /// to user gestures, updates to  the controller state and mounts the entire PhotoView Layout
-class PhotoViewImageWrapper extends StatefulWidget {
-  const PhotoViewImageWrapper({
+class PhotoViewCore extends StatefulWidget {
+  const PhotoViewCore({
     Key key,
     @required this.imageProvider,
     this.backgroundDecoration,
     this.gaplessPlayback = false,
-    this.heroTag,
+    this.heroAttributes,
     this.enableRotation,
-    this.transitionOnUserGestures = false,
     this.onTapUp,
     this.onTapDown,
     this.index,
-    @required this.delegate,
+    @required this.controller,
+    @required this.scaleBoundaries,
+    @required this.scaleStateCycle,
+    @required this.scaleStateController,
+    @required this.basePosition,
   })  : customChild = null,
         super(key: key);
 
-  const PhotoViewImageWrapper.customChild({
+  const PhotoViewCore.customChild({
     Key key,
     @required this.customChild,
     this.backgroundDecoration,
-    this.heroTag,
+    this.heroAttributes,
     this.enableRotation,
-    this.transitionOnUserGestures = false,
     this.onTapUp,
     this.onTapDown,
     this.index,
-    @required this.delegate,
+    @required this.controller,
+    @required this.scaleBoundaries,
+    @required this.scaleStateCycle,
+    @required this.scaleStateController,
+    @required this.basePosition,
   })  : imageProvider = null,
         gaplessPlayback = false,
         super(key: key);
@@ -45,28 +56,35 @@ class PhotoViewImageWrapper extends StatefulWidget {
   final Decoration backgroundDecoration;
   final ImageProvider imageProvider;
   final bool gaplessPlayback;
-  final Object heroTag;
+  final PhotoViewHeroAttributes heroAttributes;
   final bool enableRotation;
   final Widget customChild;
-  final bool transitionOnUserGestures;
 
-  final PhotoViewControllerDelegate delegate;
+  final PhotoViewControllerBase controller;
+  final PhotoViewScaleStateController scaleStateController;
+  final ScaleBoundaries scaleBoundaries;
+  final ScaleStateCycle scaleStateCycle;
+  final Alignment basePosition;
 
   final PhotoViewImageTapUpCallback onTapUp;
   final PhotoViewImageTapDownCallback onTapDown;
 
   @override
   State<StatefulWidget> createState() {
-    return _PhotoViewImageWrapperState();
+    return PhotoViewCoreState();
   }
+
+  bool get hasCustomChild => customChild != null;
 }
 
-class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
-    with TickerProviderStateMixin implements GestureDetectorCallback {
+class PhotoViewCoreState extends State<PhotoViewCore>
+    with
+        TickerProviderStateMixin,
+        PhotoViewControllerDelegate,
+        HitCornersDetector {
   Offset _normalizedPosition;
   double _scaleBefore;
   double _rotationBefore;
-  PageViewWrapper _customViewPager;
 
   AnimationController _scaleAnimationController;
   Animation<double> _scaleAnimation;
@@ -77,56 +95,57 @@ class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
   AnimationController _rotationAnimationController;
   Animation<double> _rotationAnimation;
 
+  PhotoViewHeroAttributes get heroAttributes => widget.heroAttributes;
+
   void handleScaleAnimation() {
-    widget.delegate.scale = _scaleAnimation.value;
+    scale = _scaleAnimation.value;
   }
 
   void handlePositionAnimate() {
-    widget.delegate.controller.position = _positionAnimation.value;
+    controller.position = _positionAnimation.value;
   }
 
   void handleRotationAnimation() {
-    widget.delegate.controller.rotation = _rotationAnimation.value;
+    controller.rotation = _rotationAnimation.value;
   }
 
-  @override
   void onScaleStart(ScaleStartDetails details) {
-    _rotationBefore = widget.delegate.controller.rotation;
-    _scaleBefore = widget.delegate.scale;
-    _normalizedPosition =
-        details.focalPoint - widget.delegate.controller.position;
+    _rotationBefore = controller.rotation;
+    _scaleBefore = scale;
+    _normalizedPosition = details.focalPoint - controller.position;
     _scaleAnimationController.stop();
     _positionAnimationController.stop();
     _rotationAnimationController.stop();
   }
 
-  @override
   void onScaleUpdate(ScaleUpdateDetails details) {
     final double newScale = _scaleBefore * details.scale;
     final Offset delta = details.focalPoint - _normalizedPosition;
 
-    widget.delegate.updateScaleStateFromNewScale(details.scale, newScale);
+    updateScaleStateFromNewScale(newScale);
 
-    widget.delegate.updateMultiple(
-        scale: newScale,
-        position: widget.delegate.clampPosition(delta * details.scale),
-        rotation: _rotationBefore + details.rotation,
-        rotationFocusPoint: details.focalPoint);
+    updateMultiple(
+      scale: newScale,
+      position: clampPosition(position: delta * details.scale),
+      rotation: _rotationBefore + details.rotation,
+      rotationFocusPoint: details.focalPoint,
+    );
   }
 
-  @override
   void onScaleEnd(ScaleEndDetails details) {
-    final double _scale = widget.delegate.scale;
-    final Offset _position = widget.delegate.controller.position;
-    final double maxScale = widget.delegate.scaleBoundaries.maxScale;
-    final double minScale = widget.delegate.scaleBoundaries.minScale;
+    final double _scale = scale;
+    final Offset _position = controller.position;
+    final double maxScale = scaleBoundaries.maxScale;
+    final double minScale = scaleBoundaries.minScale;
 
     //animate back to maxScale if gesture exceeded the maxScale specified
     if (_scale > maxScale) {
       final double scaleComebackRatio = maxScale / _scale;
       animateScale(_scale, maxScale);
-      final Offset clampedPosition = widget.delegate
-          .clampPosition(_position * scaleComebackRatio, scale: maxScale);
+      final Offset clampedPosition = clampPosition(
+        position: _position * scaleComebackRatio,
+        scale: maxScale,
+      );
       animatePosition(_position, clampedPosition);
       return;
     }
@@ -136,9 +155,12 @@ class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
       final double scaleComebackRatio = minScale / _scale;
       animateScale(_scale, minScale);
       animatePosition(
-          _position,
-          widget.delegate
-              .clampPosition(_position * scaleComebackRatio, scale: minScale));
+        _position,
+        clampPosition(
+          position: _position * scaleComebackRatio,
+          scale: minScale,
+        ),
+      );
       return;
     }
     // get magnitude from gesture velocity
@@ -147,21 +169,17 @@ class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
     // animate velocity only if there is no scale change and a significant magnitude
     if (_scaleBefore / _scale == 1.0 && magnitude >= 400.0) {
       final Offset direction = details.velocity.pixelsPerSecond / magnitude;
-      animatePosition(_position,
-          widget.delegate.clampPosition(_position + direction * 100.0));
+      animatePosition(
+        _position,
+        clampPosition(position: _position + direction * 100.0),
+      );
     }
 
-    widget.delegate.checkAndSetToInitialScaleState();
+    checkAndSetToInitialScaleState();
   }
 
-  @override
-  bool canMove(double scale, Offset delta) {
-    return widget.delegate.canMove(scale, delta);
-  }
-
-  @override
   void onDoubleTap() {
-    widget.delegate.nextScaleState();
+    nextScaleState();
   }
 
   void animateScale(double from, double to) {
@@ -192,7 +210,7 @@ class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
 
   void onAnimationStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
-      widget.delegate.checkAndSetToInitialScaleState();
+      checkAndSetToInitialScaleState();
     }
   }
 
@@ -208,23 +226,14 @@ class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
 
     _rotationAnimationController = AnimationController(vsync: this)
       ..addListener(handleRotationAnimation);
-    widget.delegate.startListeners();
-    widget.delegate.addAnimateOnScaleStateUpdate(animateOnScaleStateUpdate);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _customViewPager = context.ancestorWidgetOfExactType(PageViewWrapper);
-    if (_customViewPager != null && widget.index != null) {
-      _customViewPager.controller.addChildGestureCallback(widget.index, this);
-    }
+    startListeners();
+    addAnimateOnScaleStateUpdate(animateOnScaleStateUpdate);
   }
 
   void animateOnScaleStateUpdate(double prevScale, double nextScale) {
     animateScale(prevScale, nextScale);
-    animatePosition(widget.delegate.controller.position, Offset.zero);
-    animateRotation(widget.delegate.controller.rotation, 0.0);
+    animatePosition(controller.position, Offset.zero);
+    animateRotation(controller.rotation, 0.0);
   }
 
   @override
@@ -233,64 +242,61 @@ class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
     _scaleAnimationController.dispose();
     _positionAnimationController.dispose();
     _rotationAnimationController.dispose();
-    widget.delegate.dispose();
-    if (_customViewPager != null && widget.index != null) {
-      _customViewPager.controller.removeChildGestureCallback(widget.index, this);
-    }
     super.dispose();
   }
 
   void onTapUp(TapUpDetails details) {
-    widget.onTapUp(context, details, widget.delegate.controller.value);
+    widget.onTapUp?.call(context, details, controller.value);
   }
 
   void onTapDown(TapDownDetails details) {
-    widget.onTapDown(context, details, widget.delegate.controller.value);
+    widget.onTapDown?.call(context, details, controller.value);
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder(
-        stream: widget.delegate.controller.outputStateStream,
-        initialData: widget.delegate.controller.prevValue,
-        builder: (BuildContext context,
-            AsyncSnapshot<PhotoViewControllerValue> snapshot) {
+        stream: controller.outputStateStream,
+        initialData: controller.prevValue,
+        builder: (
+          BuildContext context,
+          AsyncSnapshot<PhotoViewControllerValue> snapshot,
+        ) {
           if (snapshot.hasData) {
             final PhotoViewControllerValue value = snapshot.data;
             final matrix = Matrix4.identity()
               ..translate(value.position.dx, value.position.dy)
-              ..scale(widget.delegate.scale);
+              ..scale(scale);
+            if (widget.enableRotation) {
+              matrix..rotateZ(value.rotation);
+            }
 
-            final rotationMatrix = Matrix4.identity()..rotateZ(value.rotation);
             final Widget customChildLayout = CustomSingleChildLayout(
               delegate: _CenterWithOriginalSizeDelegate(
-                  widget.delegate.scaleBoundaries.childSize,
-                  widget.delegate.basePosition),
+                scaleBoundaries.childSize,
+                basePosition,
+              ),
               child: _buildHero(),
             );
-            return GestureDetector(
+            return PhotoViewGestureDetector(
               child: Container(
                 child: Center(
-                    child: Transform(
-                  child: widget.enableRotation
-                      ? Transform(
-                          child: customChildLayout,
-                          transform: rotationMatrix,
-                          alignment: Alignment.center,
-                          origin: value.rotationFocusPoint,
-                        )
-                      : customChildLayout,
-                  transform: matrix,
-                  alignment: widget.delegate.basePosition,
-                )),
+                  child: Transform(
+                    child: customChildLayout,
+                    transform: matrix,
+                    alignment: basePosition,
+                  ),
+                ),
                 decoration: widget.backgroundDecoration ??
                     const BoxDecoration(
-                        color: const Color.fromRGBO(0, 0, 0, 1.0)),
+                      color: const Color.fromRGBO(0, 0, 0, 1.0),
+                    ),
               ),
-              onDoubleTap: widget.delegate.nextScaleState,
+              onDoubleTap: nextScaleState,
               onScaleStart: onScaleStart,
               onScaleUpdate: onScaleUpdate,
               onScaleEnd: onScaleEnd,
+              hitDetector: this,
               onTapUp: widget.onTapUp == null ? null : onTapUp,
               onTapDown: widget.onTapDown == null ? null : onTapDown,
             );
@@ -301,22 +307,25 @@ class _PhotoViewImageWrapperState extends State<PhotoViewImageWrapper>
   }
 
   Widget _buildHero() {
-    return widget.heroTag != null
+    return heroAttributes != null
         ? Hero(
-            tag: widget.heroTag,
+            tag: heroAttributes.tag,
+            createRectTween: heroAttributes.createRectTween,
+            flightShuttleBuilder: heroAttributes.flightShuttleBuilder,
+            placeholderBuilder: heroAttributes.placeholderBuilder,
+            transitionOnUserGestures: heroAttributes.transitionOnUserGestures,
             child: _buildChild(),
-            transitionOnUserGestures: widget.transitionOnUserGestures,
           )
         : _buildChild();
   }
 
   Widget _buildChild() {
-    return widget.customChild == null
-        ? Image(
+    return widget.hasCustomChild
+        ? widget.customChild
+        : Image(
             image: widget.imageProvider,
             gaplessPlayback: widget.gaplessPlayback,
-          )
-        : widget.customChild;
+          );
   }
 }
 
@@ -337,16 +346,22 @@ class _CenterWithOriginalSizeDelegate extends SingleChildLayoutDelegate {
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
-    return BoxConstraints(
-      maxWidth: subjectSize.width,
-      maxHeight: subjectSize.height,
-      minHeight: subjectSize.height,
-      minWidth: subjectSize.width,
-    );
+    return BoxConstraints.tight(subjectSize);
   }
 
   @override
-  bool shouldRelayout(SingleChildLayoutDelegate oldDelegate) {
-    return true;
+  bool shouldRelayout(_CenterWithOriginalSizeDelegate oldDelegate) {
+    return oldDelegate != this;
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _CenterWithOriginalSizeDelegate &&
+          runtimeType == other.runtimeType &&
+          subjectSize == other.subjectSize &&
+          basePosition == other.basePosition;
+
+  @override
+  int get hashCode => subjectSize.hashCode ^ basePosition.hashCode;
 }
